@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
 
 export function useRealtimeTasks(initialTasks: Task[]) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks)
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     setTasks(initialTasks)
@@ -43,13 +43,16 @@ export function useRealtimeTasks(initialTasks: Task[]) {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'task_assignments' },
-        async () => {
-          // 할당 상태 변경 시 전체 tasks 재조회
-          const { data } = await supabase
-            .from('tasks')
-            .select('*, assignments:task_assignments(*, assignee:profiles(*))')
-            .order('created_at', { ascending: false })
-          if (data) setTasks(data as Task[])
+        (payload) => {
+          // 해당 assignment만 로컬 상태에서 업데이트 — DB 재조회 없음
+          setTasks((prev) => prev.map((t) => {
+            if (!t.assignments) return t
+            const idx = t.assignments.findIndex((a) => a.id === payload.new.id)
+            if (idx === -1) return t
+            const updated = [...t.assignments]
+            updated[idx] = { ...updated[idx], ...payload.new }
+            return { ...t, assignments: updated }
+          }))
         }
       )
       .subscribe()

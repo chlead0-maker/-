@@ -74,6 +74,7 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
   }
 
   const employees = initialActive.filter((p) => p.role === 'employee')
+  const teamLeads = initialActive.filter((p) => p.role === 'team_lead')
   const admins = initialActive.filter((p) => p.role === 'admin')
 
   return (
@@ -132,10 +133,50 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {admins.map((p) => <ProfileRow key={p.id} profile={p} />)}
+            {admins.map((p) => <ProfileRow key={p.id} profile={p} roleLabel="관리자" badgeClass="bg-indigo-100 text-indigo-700" />)}
           </div>
         </CardContent>
       </Card>
+
+      {teamLeads.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">팀장 ({teamLeads.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {teamLeads.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="bg-violet-100 text-violet-700 text-sm font-medium">
+                      {p.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
+                    <p className="text-xs text-gray-500 truncate">{p.email}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="secondary" className="bg-violet-100 text-violet-700">팀장</Badge>
+                    <Button size="sm" variant="ghost"
+                      className="h-7 px-2 text-gray-500 hover:text-indigo-600"
+                      title="비밀번호 재설정 이메일 발송"
+                      onClick={() => { setResetTarget(p); setResetDone(false) }}>
+                      <KeyRound className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost"
+                      className="h-7 px-2 text-gray-500 hover:text-red-600"
+                      title="계정 삭제"
+                      onClick={() => setDeleteTarget(p)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -236,12 +277,12 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
   )
 }
 
-function ProfileRow({ profile }: { profile: Profile }) {
+function ProfileRow({ profile, roleLabel, badgeClass }: { profile: Profile; roleLabel: string; badgeClass: string }) {
   const initials = profile.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
   return (
     <div className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
       <Avatar className="h-9 w-9">
-        <AvatarFallback className="bg-indigo-100 text-indigo-700 text-sm font-medium">
+        <AvatarFallback className={`text-sm font-medium ${badgeClass}`}>
           {initials}
         </AvatarFallback>
       </Avatar>
@@ -249,7 +290,7 @@ function ProfileRow({ profile }: { profile: Profile }) {
         <p className="text-sm font-medium text-gray-900">{profile.full_name}</p>
         <p className="text-xs text-gray-500 truncate">{profile.email}</p>
       </div>
-      <Badge variant="secondary" className="bg-indigo-100 text-indigo-700">관리자</Badge>
+      <Badge variant="secondary" className={badgeClass}>{roleLabel}</Badge>
     </div>
   )
 }

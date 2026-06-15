@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO,
@@ -13,6 +13,7 @@ import QuickAddModal from './QuickAddModal'
 import type { Task, TaskAssignment, ItemType } from '@/lib/types'
 
 interface Props {
+  canViewAll: boolean
   isAdmin: boolean
   currentUserId: string
   employees: { id: string; full_name: string }[]
@@ -20,8 +21,9 @@ interface Props {
 
 const DAY_HEADERS = ['월', '화', '수', '목', '금', '토', '일']
 
-export default function CalendarView({ isAdmin, currentUserId, employees }: Props) {
-  const supabase = createClient()
+export default function CalendarView({ canViewAll, isAdmin, currentUserId, employees }: Props) {
+  // useMemo로 안정적인 참조 — 매 렌더마다 새 객체가 생성되는 것을 방지
+  const supabase = useMemo(() => createClient(), [])
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [items, setItems] = useState<Task[]>([])
@@ -32,34 +34,44 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
     const from = format(startOfMonth(currentDate), 'yyyy-MM-dd')
     const to = format(endOfMonth(currentDate), 'yyyy-MM-dd')
 
-    // 내 assignments는 항상 조회 (완료 버튼용)
-    const { data: assignmentsData } = await supabase
-      .from('task_assignments')
-      .select('*')
-      .eq('assignee_id', currentUserId)
-    setMyAssignments((assignmentsData || []) as TaskAssignment[])
-
-    if (isAdmin) {
-      const { data } = await supabase
-        .from('tasks')
-        .select('*, assignments:task_assignments(*, assignee:profiles(*))')
-        .gte('due_date', from)
-        .lte('due_date', to)
-        .order('due_date')
-      setItems((data || []) as Task[])
+    if (canViewAll) {
+      // 관리자/팀장: 전체 조회 + 내 assignments 병렬
+      const [{ data: tasksData }, { data: assignmentsData }] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('*, assignments:task_assignments(*, assignee:profiles(*))')
+          .gte('due_date', from)
+          .lte('due_date', to)
+          .order('due_date'),
+        supabase
+          .from('task_assignments')
+          .select('*')
+          .eq('assignee_id', currentUserId),
+      ])
+      setItems((tasksData || []) as Task[])
+      setMyAssignments((assignmentsData || []) as TaskAssignment[])
     } else {
-      const taskIds = (assignmentsData || []).map((a) => a.task_id)
-      if (!taskIds.length) { setItems([]); return }
-      const { data } = await supabase
-        .from('tasks')
-        .select('*')
-        .in('id', taskIds)
-        .gte('due_date', from)
-        .lte('due_date', to)
-        .order('due_date')
-      setItems((data || []) as Task[])
+      // 직원: 내 assignments 전체 + 해당 월 tasks 병렬
+      const [{ data: assignmentsData }, { data: dateTasksData }] = await Promise.all([
+        supabase
+          .from('task_assignments')
+          .select('*')
+          .eq('assignee_id', currentUserId),
+        supabase
+          .from('task_assignments')
+          .select('task:tasks!inner(*)')
+          .eq('assignee_id', currentUserId)
+          .gte('task.due_date', from)
+          .lte('task.due_date', to),
+      ])
+      setMyAssignments((assignmentsData || []) as TaskAssignment[])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setItems(((dateTasksData || []) as any[]).map((d) => {
+        const t = Array.isArray(d.task) ? d.task[0] : d.task
+        return t as Task
+      }).filter(Boolean))
     }
-  }, [currentDate, isAdmin, currentUserId, supabase])
+  }, [currentDate, canViewAll, currentUserId, supabase])
 
   useEffect(() => { fetchItems() }, [fetchItems])
 

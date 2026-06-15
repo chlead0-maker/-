@@ -13,7 +13,7 @@ async function fetchTasks(
   supabase: Awaited<ReturnType<typeof createClient>>,
   type: string,
   userId: string,
-  isAdmin: boolean
+  canViewAll: boolean
 ) {
   const today = new Date()
   let from: string
@@ -29,7 +29,7 @@ async function fetchTasks(
     to = format(endOfMonth(today), 'yyyy-MM-dd')
   }
 
-  if (isAdmin) {
+  if (canViewAll) {
     const { data } = await supabase
       .from('tasks')
       .select('*, assignments:task_assignments(*, assignee:profiles(*))')
@@ -40,8 +40,6 @@ async function fetchTasks(
     return (data || []) as Task[]
   }
 
-  // 직원: 조인 1회로 (기존 2회 순차)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await supabase
     .from('task_assignments')
     .select('task:tasks!inner(*)')
@@ -63,13 +61,14 @@ export default async function TasksPage() {
   if (!user || !profile) redirect('/login')
 
   const isAdmin = profile.role === 'admin'
+  const canViewAll = profile.role === 'admin' || profile.role === 'team_lead'
   const supabase = await createClient()
 
   const [dailyTasks, weeklyTasks, monthlyTasks, myAssignmentsData] = await Promise.all([
-    fetchTasks(supabase, 'daily', user.id, isAdmin),
-    fetchTasks(supabase, 'weekly', user.id, isAdmin),
-    fetchTasks(supabase, 'monthly', user.id, isAdmin),
-    isAdmin
+    fetchTasks(supabase, 'daily', user.id, canViewAll),
+    fetchTasks(supabase, 'weekly', user.id, canViewAll),
+    fetchTasks(supabase, 'monthly', user.id, canViewAll),
+    canViewAll
       ? Promise.resolve({ data: [] })
       : supabase.from('task_assignments').select('*').eq('assignee_id', user.id),
   ])

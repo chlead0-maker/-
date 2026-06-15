@@ -7,13 +7,13 @@ import type { Task, TaskAssignment, EmployeeStats, Profile } from '@/lib/types'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 
 export default async function DashboardPage() {
-  // 레이아웃에서 이미 호출했으면 캐시 반환 (추가 DB 왕복 없음)
   const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
   if (!user || !profile) redirect('/login')
 
+  const canViewAll = profile.role === 'admin' || profile.role === 'team_lead'
   const supabase = await createClient()
 
-  if (profile.role === 'admin') {
+  if (canViewAll) {
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
@@ -22,7 +22,7 @@ export default async function DashboardPage() {
         .select('*, assignments:task_assignments(*, assignee:profiles(*))')
         .order('created_at', { ascending: false }),
       supabase.from('profiles')
-        .select('*').eq('role', 'employee').eq('is_active', true),
+        .select('*').eq('is_active', true).neq('role', 'admin').order('full_name'),
       supabase.from('task_assignments')
         .select('assignee_id, status, task:tasks!inner(due_date, status)')
         .gte('task.due_date', weekStart)

@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'employee'
+export type Role = 'admin' | 'team_lead' | 'employee'
 export type TaskType = 'daily' | 'weekly' | 'monthly'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'overdue' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'

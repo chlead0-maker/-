@@ -14,9 +14,9 @@ async function fetchTasksForPeriod(
   from: string,
   to: string,
   userId: string,
-  isAdmin: boolean
+  canViewAll: boolean
 ): Promise<Task[]> {
-  if (isAdmin) {
+  if (canViewAll) {
     const { data } = await supabase
       .from('tasks')
       .select('*, assignments:task_assignments(*, assignee:profiles(*))')
@@ -78,6 +78,7 @@ export default async function ReportsPage() {
   if (!user || !profile) redirect('/login')
 
   const isAdmin = profile.role === 'admin'
+  const canViewAll = profile.role === 'admin' || profile.role === 'team_lead'
   const today = new Date()
   const supabase = await createClient()
 
@@ -89,16 +90,16 @@ export default async function ReportsPage() {
   const monthTo = format(endOfMonth(today), 'yyyy-MM-dd')
 
   const [dailyTasks, weeklyTasks, monthlyTasks] = await Promise.all([
-    fetchTasksForPeriod(supabase, dailyFrom, dailyTo, user.id, isAdmin),
-    fetchTasksForPeriod(supabase, weekFrom, weekTo, user.id, isAdmin),
-    fetchTasksForPeriod(supabase, monthFrom, monthTo, user.id, isAdmin),
+    fetchTasksForPeriod(supabase, dailyFrom, dailyTo, user.id, canViewAll),
+    fetchTasksForPeriod(supabase, weekFrom, weekTo, user.id, canViewAll),
+    fetchTasksForPeriod(supabase, monthFrom, monthTo, user.id, canViewAll),
   ])
 
   let dailyStats: EmployeeStats[] | undefined
   let weeklyStats: EmployeeStats[] | undefined
   let monthlyStats: EmployeeStats[] | undefined
 
-  if (isAdmin) {
+  if (canViewAll) {
     ;[dailyStats, weeklyStats, monthlyStats] = await Promise.all([
       fetchEmployeeStats(supabase, dailyFrom, dailyTo),
       fetchEmployeeStats(supabase, weekFrom, weekTo),
@@ -107,7 +108,7 @@ export default async function ReportsPage() {
   }
 
   let myAllAssignments: TaskAssignment[] = []
-  if (!isAdmin) {
+  if (!canViewAll) {
     const { data } = await supabase
       .from('task_assignments').select('*').eq('assignee_id', user.id)
     myAllAssignments = (data || []) as TaskAssignment[]
@@ -153,7 +154,7 @@ export default async function ReportsPage() {
         daily={{ from: dailyFrom, to: dailyTo, tasks: dailyTasks, employeeStats: dailyStats, myAssignments: myAllAssignments, taskLogs: logsFor(dailyTasks) }}
         weekly={{ from: weekFrom, to: weekTo, tasks: weeklyTasks, employeeStats: weeklyStats, myAssignments: myAllAssignments, taskLogs: logsFor(weeklyTasks) }}
         monthly={{ from: monthFrom, to: monthTo, tasks: monthlyTasks, employeeStats: monthlyStats, myAssignments: myAllAssignments, taskLogs: logsFor(monthlyTasks) }}
-        isAdmin={isAdmin}
+        isAdmin={canViewAll}
         profile={profile as Profile}
         currentUserId={user.id}
       />

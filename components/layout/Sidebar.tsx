@@ -33,6 +33,12 @@ const adminNavItems = [
   { href: '/employees', label: '직원 관리', icon: Users },
 ]
 
+const roleLabel: Record<string, string> = {
+  admin: '관리자',
+  team_lead: '팀장',
+  employee: '직원',
+}
+
 export default function Sidebar({ profile }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -60,7 +66,7 @@ export default function Sidebar({ profile }: SidebarProps) {
         <span className="text-lg font-bold text-gray-900">팀 캘린더</span>
       </div>
 
-      {/* 업무 추가 버튼 — 모든 역할에 표시 */}
+      {/* 업무 추가 버튼 */}
       <div className="px-4 pt-4">
         <Link
           href="/tasks/new"
@@ -126,7 +132,7 @@ export default function Sidebar({ profile }: SidebarProps) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{profile.full_name}</p>
             <p className="text-xs text-gray-500">
-              {profile.role === 'admin' ? '관리자' : '직원'}
+              {roleLabel[profile.role] ?? '직원'}
             </p>
           </div>
           <button

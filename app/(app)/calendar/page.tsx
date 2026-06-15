@@ -10,9 +10,10 @@ export default async function CalendarPage() {
   if (!user || !profile) redirect('/login')
 
   const isAdmin = profile.role === 'admin'
-  let employees: { id: string; full_name: string }[] = []
+  const canViewAll = profile.role === 'admin' || profile.role === 'team_lead'
 
-  if (isAdmin) {
+  let employees: { id: string; full_name: string }[] = []
+  if (canViewAll) {
     const supabase = await createClient()
     const { data } = await supabase
       .from('profiles')
@@ -28,7 +29,12 @@ export default async function CalendarPage() {
         <h1 className="text-2xl font-bold text-gray-900">캘린더</h1>
         <p className="text-sm text-gray-500 mt-0.5">할일과 일정을 날짜별로 확인하세요</p>
       </div>
-      <CalendarView isAdmin={isAdmin} currentUserId={user.id} employees={employees} />
+      <CalendarView
+        canViewAll={canViewAll}
+        isAdmin={isAdmin}
+        currentUserId={user.id}
+        employees={employees}
+      />
     </div>
   )
 }
