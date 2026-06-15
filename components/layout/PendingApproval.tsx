@@ -21,7 +21,7 @@ export default function PendingApproval() {
         <div className="flex justify-center mb-6">
           <div className="flex items-center gap-2">
             <CheckSquare className="h-8 w-8 text-indigo-600" />
-            <span className="text-2xl font-bold text-gray-900">팀 업무 관리</span>
+            <span className="text-2xl font-bold text-gray-900">팀 캘린더</span>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">

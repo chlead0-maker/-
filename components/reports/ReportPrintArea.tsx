@@ -235,7 +235,7 @@ const ReportPrintArea = forwardRef<HTMLDivElement, ReportData>(
 
         {/* 인쇄용 푸터 */}
         <div className="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center print:block hidden">
-          팀 업무 관리 시스템 | {format(new Date(), 'yyyy년 M월 d일 HH:mm', { locale: ko })} 출력
+          팀 캘린더 시스템 | {format(new Date(), 'yyyy년 M월 d일 HH:mm', { locale: ko })} 출력
         </div>
       </div>
     )

@@ -57,7 +57,7 @@ export default function Sidebar({ profile }: SidebarProps) {
       {/* 로고 */}
       <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-100">
         <CheckSquare className="h-6 w-6 text-indigo-600" />
-        <span className="text-lg font-bold text-gray-900">팀 업무 관리</span>
+        <span className="text-lg font-bold text-gray-900">팀 캘린더</span>
       </div>
 
       {/* 업무 추가 버튼 — 모든 역할에 표시 */}

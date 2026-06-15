@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "팀 업무 관리",
+  title: "팀 캘린더",
   description: "직원 업무 할당 및 진행 현황 관리 시스템",
 };
 

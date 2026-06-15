@@ -59,7 +59,7 @@ export default function SignupPage() {
           <div className="flex justify-center mb-8">
             <div className="flex items-center gap-2">
               <CheckSquare className="h-8 w-8 text-indigo-600" />
-              <span className="text-2xl font-bold text-gray-900">팀 업무 관리</span>
+              <span className="text-2xl font-bold text-gray-900">팀 캘린더</span>
             </div>
           </div>
           <Card>
@@ -86,7 +86,7 @@ export default function SignupPage() {
         <div className="flex justify-center mb-8">
           <div className="flex items-center gap-2">
             <CheckSquare className="h-8 w-8 text-indigo-600" />
-            <span className="text-2xl font-bold text-gray-900">팀 업무 관리</span>
+            <span className="text-2xl font-bold text-gray-900">팀 캘린더</span>
           </div>
         </div>
 
