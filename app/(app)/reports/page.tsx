@@ -9,68 +9,10 @@ import { createClient } from '@/lib/supabase/server'
 import ReportView from '@/components/reports/ReportView'
 import type { Task, TaskAssignment, TaskLog, EmployeeStats, Profile } from '@/lib/types'
 
-async function fetchTasksForPeriod(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  from: string,
-  to: string,
-  userId: string,
-  canViewAll: boolean
-): Promise<Task[]> {
-  if (canViewAll) {
-    const { data } = await supabase
-      .from('tasks')
-      .select('*, assignments:task_assignments(*, assignee:profiles(*))')
-      .gte('due_date', from)
-      .lte('due_date', to)
-      .order('due_date', { ascending: true })
-    return (data || []) as Task[]
-  }
-
-  const { data } = await supabase
-    .from('task_assignments')
-    .select('task:tasks!inner(*)')
-    .eq('assignee_id', userId)
-    .gte('task.due_date', from)
-    .lte('task.due_date', to)
-    .order('task.due_date', { ascending: true })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data || []).map((d: any) => {
-    const t = Array.isArray(d.task) ? d.task[0] : d.task
-    return t as Task
-  }).filter(Boolean)
-}
-
-async function fetchEmployeeStats(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  from: string,
-  to: string
-): Promise<EmployeeStats[]> {
-  const [{ data: employees }, { data: allAssignments }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('is_active', true).order('full_name'),
-    supabase.from('task_assignments')
-      .select('assignee_id, status, task:tasks!inner(due_date, status)')
-      .gte('task.due_date', from)
-      .lte('task.due_date', to),
-  ])
-
-  return (employees || []).map((emp) => {
-    const empA = (allAssignments || []).filter((a) => a.assignee_id === emp.id)
-    const total = empA.length
-    const completed = empA.filter((a) => a.status === 'completed').length
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const overdue = empA.filter((a: any) => {
-      const t = Array.isArray(a.task) ? a.task[0] : a.task
-      return t?.status === 'overdue'
-    }).length
-    return {
-      profile: emp as Profile,
-      totalTasks: total,
-      completedTasks: completed,
-      pendingTasks: total - completed,
-      overdueTasks: overdue,
-    }
-  })
+type AssignRow = {
+  assignee_id: string
+  status: string
+  task: { due_date: string; status: string } | { due_date: string; status: string }[]
 }
 
 export default async function ReportsPage() {
@@ -83,43 +25,86 @@ export default async function ReportsPage() {
   const supabase = await createClient()
 
   const dailyFrom = format(today, 'yyyy-MM-dd')
-  const dailyTo = dailyFrom
   const weekFrom = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const weekTo = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const monthFrom = format(startOfMonth(today), 'yyyy-MM-dd')
   const monthTo = format(endOfMonth(today), 'yyyy-MM-dd')
 
-  const [dailyTasks, weeklyTasks, monthlyTasks] = await Promise.all([
-    fetchTasksForPeriod(supabase, dailyFrom, dailyTo, user.id, canViewAll),
-    fetchTasksForPeriod(supabase, weekFrom, weekTo, user.id, canViewAll),
-    fetchTasksForPeriod(supabase, monthFrom, monthTo, user.id, canViewAll),
-  ])
-
-  let dailyStats: EmployeeStats[] | undefined
-  let weeklyStats: EmployeeStats[] | undefined
-  let monthlyStats: EmployeeStats[] | undefined
+  // 월 범위 1회 조회 — daily/weekly/monthly 모두 커버
+  let allMonthTasks: Task[] = []
+  let employees: Profile[] = []
+  let assignRows: AssignRow[] = []
+  let myAllAssignments: TaskAssignment[] = []
 
   if (canViewAll) {
-    ;[dailyStats, weeklyStats, monthlyStats] = await Promise.all([
-      fetchEmployeeStats(supabase, dailyFrom, dailyTo),
-      fetchEmployeeStats(supabase, weekFrom, weekTo),
-      fetchEmployeeStats(supabase, monthFrom, monthTo),
+    const [{ data: tasksData }, { data: empData }, { data: assignData }] = await Promise.all([
+      supabase
+        .from('tasks')
+        .select('*, assignments:task_assignments(*, assignee:profiles(*))')
+        .gte('due_date', monthFrom)
+        .lte('due_date', monthTo)
+        .order('due_date', { ascending: true }),
+      supabase.from('profiles').select('*').eq('is_active', true).order('full_name'),
+      supabase
+        .from('task_assignments')
+        .select('assignee_id, status, task:tasks!inner(due_date, status)')
+        .gte('task.due_date', monthFrom)
+        .lte('task.due_date', monthTo),
     ])
+    allMonthTasks = (tasksData || []) as Task[]
+    employees = (empData || []) as Profile[]
+    assignRows = (assignData || []) as unknown as AssignRow[]
+  } else {
+    const [{ data: taskData }, { data: myData }] = await Promise.all([
+      supabase
+        .from('task_assignments')
+        .select('task:tasks!inner(*)')
+        .eq('assignee_id', user.id)
+        .gte('task.due_date', monthFrom)
+        .lte('task.due_date', monthTo),
+      supabase.from('task_assignments').select('*').eq('assignee_id', user.id),
+    ])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    allMonthTasks = ((taskData || []) as any[]).map((d) => {
+      const t = Array.isArray(d.task) ? d.task[0] : d.task
+      return t as Task
+    }).filter(Boolean)
+    myAllAssignments = (myData || []) as TaskAssignment[]
   }
 
-  let myAllAssignments: TaskAssignment[] = []
-  if (!canViewAll) {
-    const { data } = await supabase
-      .from('task_assignments').select('*').eq('assignee_id', user.id)
-    myAllAssignments = (data || []) as TaskAssignment[]
+  // JS 필터링 — DB 왕복 없음
+  const dailyTasks = allMonthTasks.filter((t) => t.due_date === dailyFrom)
+  const weeklyTasks = allMonthTasks.filter((t) => t.due_date >= weekFrom && t.due_date <= weekTo)
+  const monthlyTasks = allMonthTasks
+
+  function computeStats(from: string, to: string): EmployeeStats[] {
+    return employees.map((emp) => {
+      const empA = assignRows.filter((a) => {
+        const t = Array.isArray(a.task) ? a.task[0] : a.task
+        return a.assignee_id === emp.id && t?.due_date >= from && t?.due_date <= to
+      })
+      const total = empA.length
+      const completed = empA.filter((a) => a.status === 'completed').length
+      const overdue = empA.filter((a) => {
+        const t = Array.isArray(a.task) ? a.task[0] : a.task
+        return t?.status === 'overdue'
+      }).length
+      return {
+        profile: emp as Profile,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: total - completed,
+        overdueTasks: overdue,
+      }
+    })
   }
 
-  // 전체 task_id 수집 후 로그 한번에 조회
-  const allTaskIds = [...new Set([
-    ...dailyTasks.map((t) => t.id),
-    ...weeklyTasks.map((t) => t.id),
-    ...monthlyTasks.map((t) => t.id),
-  ])]
+  const dailyStats = canViewAll ? computeStats(dailyFrom, dailyFrom) : undefined
+  const weeklyStats = canViewAll ? computeStats(weekFrom, weekTo) : undefined
+  const monthlyStats = canViewAll ? computeStats(monthFrom, monthTo) : undefined
+
+  // 월 전체 태스크 ID로 로그 1회 일괄 조회
+  const allTaskIds = [...new Set(allMonthTasks.map((t) => t.id))]
 
   const taskLogsByTaskId: Record<string, TaskLog[]> = {}
   if (allTaskIds.length > 0) {
@@ -151,7 +136,7 @@ export default async function ReportsPage() {
       </div>
 
       <ReportView
-        daily={{ from: dailyFrom, to: dailyTo, tasks: dailyTasks, employeeStats: dailyStats, myAssignments: myAllAssignments, taskLogs: logsFor(dailyTasks) }}
+        daily={{ from: dailyFrom, to: dailyFrom, tasks: dailyTasks, employeeStats: dailyStats, myAssignments: myAllAssignments, taskLogs: logsFor(dailyTasks) }}
         weekly={{ from: weekFrom, to: weekTo, tasks: weeklyTasks, employeeStats: weeklyStats, myAssignments: myAllAssignments, taskLogs: logsFor(weeklyTasks) }}
         monthly={{ from: monthFrom, to: monthTo, tasks: monthlyTasks, employeeStats: monthlyStats, myAssignments: myAllAssignments, taskLogs: logsFor(monthlyTasks) }}
         isAdmin={canViewAll}

@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic'
+export const preferredRegion = 'icn1'
 
 import { redirect } from 'next/navigation'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
