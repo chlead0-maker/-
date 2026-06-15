@@ -7,7 +7,7 @@ import {
 import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import ReportView from '@/components/reports/ReportView'
-import type { Task, TaskAssignment, EmployeeStats, Profile } from '@/lib/types'
+import type { Task, TaskAssignment, TaskLog, EmployeeStats, Profile } from '@/lib/types'
 
 async function fetchTasksForPeriod(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -26,7 +26,6 @@ async function fetchTasksForPeriod(
     return (data || []) as Task[]
   }
 
-  // 직원: 조인 1회로 (기존 2회 순차)
   const { data } = await supabase
     .from('task_assignments')
     .select('task:tasks!inner(*)')
@@ -47,7 +46,6 @@ async function fetchEmployeeStats(
   from: string,
   to: string
 ): Promise<EmployeeStats[]> {
-  // 2개 쿼리 병렬 (기존: N+1 for loop)
   const [{ data: employees }, { data: allAssignments }] = await Promise.all([
     supabase.from('profiles').select('*').eq('is_active', true).order('full_name'),
     supabase.from('task_assignments')
@@ -111,10 +109,35 @@ export default async function ReportsPage() {
   let myAllAssignments: TaskAssignment[] = []
   if (!isAdmin) {
     const { data } = await supabase
-      .from('task_assignments')
-      .select('*')
-      .eq('assignee_id', user.id)
+      .from('task_assignments').select('*').eq('assignee_id', user.id)
     myAllAssignments = (data || []) as TaskAssignment[]
+  }
+
+  // 전체 task_id 수집 후 로그 한번에 조회
+  const allTaskIds = [...new Set([
+    ...dailyTasks.map((t) => t.id),
+    ...weeklyTasks.map((t) => t.id),
+    ...monthlyTasks.map((t) => t.id),
+  ])]
+
+  const taskLogsByTaskId: Record<string, TaskLog[]> = {}
+  if (allTaskIds.length > 0) {
+    const { data: logsData } = await supabase
+      .from('task_logs')
+      .select('*, author:profiles(*)')
+      .in('task_id', allTaskIds)
+      .order('created_at', { ascending: true })
+
+    for (const log of (logsData || []) as TaskLog[]) {
+      if (!taskLogsByTaskId[log.task_id]) taskLogsByTaskId[log.task_id] = []
+      taskLogsByTaskId[log.task_id].push(log)
+    }
+  }
+
+  function logsFor(tasks: Task[]): Record<string, TaskLog[]> {
+    const result: Record<string, TaskLog[]> = {}
+    for (const t of tasks) result[t.id] = taskLogsByTaskId[t.id] || []
+    return result
   }
 
   return (
@@ -127,11 +150,12 @@ export default async function ReportsPage() {
       </div>
 
       <ReportView
-        daily={{ from: dailyFrom, to: dailyTo, tasks: dailyTasks, employeeStats: dailyStats, myAssignments: myAllAssignments }}
-        weekly={{ from: weekFrom, to: weekTo, tasks: weeklyTasks, employeeStats: weeklyStats, myAssignments: myAllAssignments }}
-        monthly={{ from: monthFrom, to: monthTo, tasks: monthlyTasks, employeeStats: monthlyStats, myAssignments: myAllAssignments }}
+        daily={{ from: dailyFrom, to: dailyTo, tasks: dailyTasks, employeeStats: dailyStats, myAssignments: myAllAssignments, taskLogs: logsFor(dailyTasks) }}
+        weekly={{ from: weekFrom, to: weekTo, tasks: weeklyTasks, employeeStats: weeklyStats, myAssignments: myAllAssignments, taskLogs: logsFor(weeklyTasks) }}
+        monthly={{ from: monthFrom, to: monthTo, tasks: monthlyTasks, employeeStats: monthlyStats, myAssignments: myAllAssignments, taskLogs: logsFor(monthlyTasks) }}
         isAdmin={isAdmin}
         profile={profile as Profile}
+        currentUserId={user.id}
       />
     </div>
   )

@@ -10,7 +10,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import type { TaskWithDetails, TaskComment, Profile } from '@/lib/types'
+import TaskLogSection from '@/components/tasks/TaskLogSection'
+import type { TaskWithDetails, TaskComment, TaskLog, Profile } from '@/lib/types'
 
 export default async function TaskDetailPage({
   params,
@@ -37,11 +38,16 @@ export default async function TaskDetailPage({
 
   if (!task) notFound()
 
-  const { data: comments } = await supabase
-    .from('task_comments')
-    .select('*, author:profiles(*)')
-    .eq('task_id', id)
-    .order('created_at', { ascending: true })
+  const [{ data: comments }, { data: logs }] = await Promise.all([
+    supabase.from('task_comments')
+      .select('*, author:profiles(*)')
+      .eq('task_id', id)
+      .order('created_at', { ascending: true }),
+    supabase.from('task_logs')
+      .select('*, author:profiles(*)')
+      .eq('task_id', id)
+      .order('created_at', { ascending: true }),
+  ])
 
   const myAssignment = task.assignments?.find(
     (a: { assignee_id: string }) => a.assignee_id === user.id
@@ -149,6 +155,14 @@ export default async function TaskDetailPage({
           <p className="text-sm text-gray-400">담당자가 없습니다</p>
         )}
       </div>
+
+      {/* 특이사항 / 진행 메모 */}
+      <TaskLogSection
+        taskId={id}
+        initialLogs={(logs || []) as TaskLog[]}
+        currentUserId={user.id}
+        isAdmin={isAdmin}
+      />
 
       {/* 완료 처리 + 댓글 (클라이언트 컴포넌트) */}
       <TaskDetailClient

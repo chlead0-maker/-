@@ -8,6 +8,7 @@ import type { TaskType, TaskPriority, ItemType } from '@/lib/types'
 export interface CreateTaskInput {
   title: string
   description?: string
+  notes?: string
   task_type: TaskType
   priority: TaskPriority
   due_date: string
@@ -24,6 +25,8 @@ export interface CreateQuickItemInput {
   start_time?: string
   end_time?: string
   description?: string
+  notes?: string
+  location?: string
   assignee_ids?: string[]
 }
 
@@ -43,6 +46,8 @@ export async function createQuickItem(input: CreateQuickItemInput) {
       start_time: input.start_time || null,
       end_time: input.end_time || null,
       description: input.description || null,
+      notes: input.notes || null,
+      location: input.location || null,
       created_by: user.id,
     })
     .select()
@@ -69,6 +74,7 @@ export async function createTask(input: CreateTaskInput) {
     .insert({
       title: input.title,
       description: input.description || null,
+      notes: input.notes || null,
       task_type: input.task_type,
       priority: input.priority,
       due_date: input.due_date,
@@ -80,24 +86,19 @@ export async function createTask(input: CreateTaskInput) {
 
   if (taskError || !task) throw new Error(taskError?.message || '업무 생성 실패')
 
-  // 담당자 미지정 시 본인에게 자동 할당 (직원 자기 업무)
   if (!input.assignee_ids?.length && !input.team_id) {
     input.assignee_ids = [user.id]
   }
 
-  // 개인 할당
   if (input.assignee_ids && input.assignee_ids.length > 0) {
     const assignments = input.assignee_ids.map((id) => ({
       task_id: task.id,
       assignee_id: id,
     }))
-    const { error: assignError } = await supabase
-      .from('task_assignments')
-      .insert(assignments)
+    const { error: assignError } = await supabase.from('task_assignments').insert(assignments)
     if (assignError) throw new Error(assignError.message)
   }
 
-  // 팀 할당: 팀원 전체에게 개별 assignment 생성
   if (input.team_id) {
     const { data: members } = await supabase
       .from('team_members')
@@ -143,7 +144,6 @@ export async function updateTaskAssignmentStatus(
 
   if (error) throw new Error(error.message)
 
-  // 모든 담당자 완료 시 상위 task도 completed로 처리
   const { data: allAssignments } = await supabase
     .from('task_assignments')
     .select('status')
@@ -158,22 +158,65 @@ export async function updateTaskAssignmentStatus(
 
   revalidatePath('/tasks')
   revalidatePath('/dashboard')
+  revalidatePath('/calendar')
   revalidatePath(`/tasks/${taskId}`)
 }
 
-export async function updateTaskStatus(
+// 캘린더 팝업에서 빠른 완료 처리 (assignmentId로 task_id 조회 후 완료)
+export async function completeAssignmentQuick(assignmentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('로그인이 필요합니다')
+
+  const { data: assignment } = await supabase
+    .from('task_assignments')
+    .select('task_id')
+    .eq('id', assignmentId)
+    .eq('assignee_id', user.id)
+    .single()
+
+  if (!assignment) throw new Error('권한이 없습니다')
+
+  await updateTaskAssignmentStatus(assignmentId, assignment.task_id, 'completed')
+}
+
+export async function addTaskLog(
   taskId: string,
-  status: string
+  content: string,
+  fileUrl?: string,
+  fileName?: string
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('로그인이 필요합니다')
 
-  const { error } = await supabase
-    .from('tasks')
-    .update({ status })
-    .eq('id', taskId)
+  const { error } = await supabase.from('task_logs').insert({
+    task_id: taskId,
+    author_id: user.id,
+    content,
+    file_url: fileUrl || null,
+    file_name: fileName || null,
+  })
+  if (error) throw new Error(error.message)
 
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath('/reports')
+}
+
+export async function deleteTaskLog(logId: string, taskId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('task_logs').delete().eq('id', logId)
+  if (error) throw new Error(error.message)
+  revalidatePath(`/tasks/${taskId}`)
+  revalidatePath('/reports')
+}
+
+export async function updateTaskStatus(taskId: string, status: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('로그인이 필요합니다')
+
+  const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId)
   if (error) throw new Error(error.message)
 
   revalidatePath('/tasks')

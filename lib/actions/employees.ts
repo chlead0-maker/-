@@ -14,7 +14,6 @@ export async function inviteEmployee(fullName: string, email: string) {
 
   if (error) throw new Error(error.message)
 
-  // 관리자가 직접 초대한 경우 즉시 활성화
   if (data.user) {
     await supabase.from('profiles').update({ is_active: true }).eq('id', data.user.id)
   }
@@ -34,21 +33,36 @@ export async function approveEmployee(profileId: string) {
 
 export async function rejectEmployee(profileId: string) {
   const supabase = await createClient()
-  // auth.users 삭제는 service_role 필요 — profiles만 삭제 (cascade로 연결)
-  const { error } = await supabase
-    .from('profiles')
-    .delete()
-    .eq('id', profileId)
+  const { error } = await supabase.from('profiles').delete().eq('id', profileId)
   if (error) throw new Error(error.message)
   revalidatePath('/employees')
 }
 
+export async function deleteEmployee(profileId: string) {
+  const supabase = await createClient()
+  // profiles 삭제 → task_assignments cascade 삭제됨
+  const { error } = await supabase.from('profiles').delete().eq('id', profileId)
+  if (error) throw new Error(error.message)
+  revalidatePath('/employees')
+}
+
+export async function resetEmployeePassword(email: string) {
+  const supabase = await createClient()
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_VERCEL_URL
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+      : 'http://localhost:3000'
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl}/auth/reset-password`,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export async function updateEmployeeRole(profileId: string, role: 'admin' | 'employee') {
   const supabase = await createClient()
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role })
-    .eq('id', profileId)
+  const { error } = await supabase.from('profiles').update({ role }).eq('id', profileId)
   if (error) throw new Error(error.message)
   revalidatePath('/employees')
 }

@@ -10,7 +10,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import DayPanel from './DayPanel'
 import QuickAddModal from './QuickAddModal'
-import type { Task, ItemType } from '@/lib/types'
+import type { Task, TaskAssignment, ItemType } from '@/lib/types'
 
 interface Props {
   isAdmin: boolean
@@ -25,11 +25,19 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [items, setItems] = useState<Task[]>([])
+  const [myAssignments, setMyAssignments] = useState<TaskAssignment[]>([])
   const [modalState, setModalState] = useState<{ date: Date; type: ItemType } | null>(null)
 
   const fetchItems = useCallback(async () => {
     const from = format(startOfMonth(currentDate), 'yyyy-MM-dd')
     const to = format(endOfMonth(currentDate), 'yyyy-MM-dd')
+
+    // 내 assignments는 항상 조회 (완료 버튼용)
+    const { data: assignmentsData } = await supabase
+      .from('task_assignments')
+      .select('*')
+      .eq('assignee_id', currentUserId)
+    setMyAssignments((assignmentsData || []) as TaskAssignment[])
 
     if (isAdmin) {
       const { data } = await supabase
@@ -40,11 +48,7 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
         .order('due_date')
       setItems((data || []) as Task[])
     } else {
-      const { data: myA } = await supabase
-        .from('task_assignments')
-        .select('task_id')
-        .eq('assignee_id', currentUserId)
-      const taskIds = (myA || []).map((a) => a.task_id)
+      const taskIds = (assignmentsData || []).map((a) => a.task_id)
       if (!taskIds.length) { setItems([]); return }
       const { data } = await supabase
         .from('tasks')
@@ -82,19 +86,15 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
       <div className="flex-1 flex flex-col min-w-0">
         {/* 월 네비게이션 */}
         <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <ChevronLeft className="h-5 w-5 text-gray-600" />
           </button>
           <h2 className="text-lg font-semibold text-gray-900">
             {format(currentDate, 'yyyy년 M월', { locale: ko })}
           </h2>
-          <button
-            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <ChevronRight className="h-5 w-5 text-gray-600" />
           </button>
         </div>
@@ -124,42 +124,29 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
               <div
                 key={day.toISOString()}
                 onClick={() => handleDayClick(day)}
-                className={`
-                  bg-white p-2 cursor-pointer transition-colors hover:bg-gray-50 min-h-[90px]
-                  ${isSelected ? 'bg-indigo-50 hover:bg-indigo-50' : ''}
-                `}
+                className={`bg-white p-2 cursor-pointer transition-colors hover:bg-gray-50 min-h-[90px]
+                  ${isSelected ? 'bg-indigo-50 hover:bg-indigo-50' : ''}`}
               >
-                {/* 날짜 숫자 */}
-                <div className={`
-                  w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-1.5
+                <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-1.5
                   ${today ? 'bg-indigo-600 text-white' : ''}
                   ${!today && isCurrentMonth ? 'text-gray-900' : ''}
-                  ${!isCurrentMonth ? 'text-gray-300' : ''}
-                `}>
+                  ${!isCurrentMonth ? 'text-gray-300' : ''}`}>
                   {format(day, 'd')}
                 </div>
-
-                {/* 아이템 칩 */}
                 <div className="space-y-0.5">
                   {visibleChips.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`
-                        text-[11px] px-1.5 py-0.5 rounded truncate leading-tight
-                        ${item.item_type === 'event'
-                          ? 'bg-sky-100 text-sky-700'
-                          : item.status === 'completed'
-                            ? 'bg-green-100 text-green-700'
-                            : item.status === 'overdue'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-indigo-100 text-indigo-700'
-                        }
-                      `}
-                    >
+                    <div key={item.id} className={`text-[11px] px-1.5 py-0.5 rounded truncate leading-tight
+                      ${item.item_type === 'event'
+                        ? 'bg-sky-100 text-sky-700'
+                        : item.status === 'completed'
+                          ? 'bg-green-100 text-green-700'
+                          : item.status === 'overdue'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                      }`}>
                       {item.item_type === 'event' && item.start_time
                         ? `${item.start_time.slice(0, 5)} ${item.title}`
-                        : item.title
-                      }
+                        : item.title}
                     </div>
                   ))}
                   {hiddenCount > 0 && (
@@ -193,8 +180,11 @@ export default function CalendarView({ isAdmin, currentUserId, employees }: Prop
         <DayPanel
           date={selectedDate}
           items={getItemsForDay(selectedDate)}
+          myAssignments={myAssignments}
+          currentUserId={currentUserId}
           onClose={() => setSelectedDate(null)}
           onAdd={handleAdd}
+          onRefresh={fetchItems}
         />
       )}
 

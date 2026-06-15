@@ -30,6 +30,8 @@ export interface Task {
   id: string
   title: string
   description: string | null
+  notes: string | null
+  location: string | null
   task_type: TaskType
   item_type: ItemType
   status: TaskStatus
@@ -64,6 +66,17 @@ export interface TaskComment {
   task_id: string
   author_id: string
   content: string
+  created_at: string
+  author?: Profile | null
+}
+
+export interface TaskLog {
+  id: string
+  task_id: string
+  author_id: string
+  content: string
+  file_url: string | null
+  file_name: string | null
   created_at: string
   author?: Profile | null
 }
