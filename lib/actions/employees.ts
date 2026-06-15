@@ -6,20 +6,39 @@ import { createClient } from '@/lib/supabase/server'
 export async function inviteEmployee(fullName: string, email: string) {
   const supabase = await createClient()
 
-  // Supabase Admin API로 초대 메일 발송
-  // SERVICE_ROLE_KEY가 필요하므로, 여기서는 signUp으로 처리 (임시 비밀번호 방식)
-  // 실제 운영 시 SUPABASE_SERVICE_ROLE_KEY + adminAuthClient.inviteUserByEmail 사용 권장
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
-    password: Math.random().toString(36).slice(-10) + 'A1!', // 임시 비밀번호
-    options: {
-      data: {
-        full_name: fullName,
-        role: 'employee',
-      },
-    },
+    password: Math.random().toString(36).slice(-10) + 'A1!',
+    options: { data: { full_name: fullName, role: 'employee' } },
   })
 
+  if (error) throw new Error(error.message)
+
+  // 관리자가 직접 초대한 경우 즉시 활성화
+  if (data.user) {
+    await supabase.from('profiles').update({ is_active: true }).eq('id', data.user.id)
+  }
+
+  revalidatePath('/employees')
+}
+
+export async function approveEmployee(profileId: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('profiles')
+    .update({ is_active: true })
+    .eq('id', profileId)
+  if (error) throw new Error(error.message)
+  revalidatePath('/employees')
+}
+
+export async function rejectEmployee(profileId: string) {
+  const supabase = await createClient()
+  // auth.users 삭제는 service_role 필요 — profiles만 삭제 (cascade로 연결)
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', profileId)
   if (error) throw new Error(error.message)
   revalidatePath('/employees')
 }

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/layout/Sidebar'
+import PendingApproval from '@/components/layout/PendingApproval'
 import type { Profile } from '@/lib/types'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .single()
 
   if (!profile) redirect('/login')
+
+  if (!profile.is_active) {
+    return <PendingApproval />
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50">
