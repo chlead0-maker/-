@@ -1,0 +1,39 @@
+export const dynamic = 'force-dynamic'
+
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import CalendarView from '@/components/calendar/CalendarView'
+
+export default async function CalendarPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const isAdmin = profile?.role === 'admin'
+
+  let employees: { id: string; full_name: string }[] = []
+  if (isAdmin) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('is_active', true)
+      .order('full_name')
+    employees = data || []
+  }
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden p-6">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-gray-900">캘린더</h1>
+        <p className="text-sm text-gray-500 mt-0.5">할일과 일정을 날짜별로 확인하세요</p>
+      </div>
+      <CalendarView isAdmin={isAdmin} currentUserId={user.id} employees={employees} />
+    </div>
+  )
+}

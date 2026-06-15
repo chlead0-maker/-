@@ -3,6 +3,7 @@ export type TaskType = 'daily' | 'weekly' | 'monthly'
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'overdue' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type AssignmentStatus = 'pending' | 'in_progress' | 'completed'
+export type ItemType = 'task' | 'event'
 
 export interface Profile {
   id: string
@@ -30,9 +31,12 @@ export interface Task {
   title: string
   description: string | null
   task_type: TaskType
+  item_type: ItemType
   status: TaskStatus
   priority: TaskPriority
   due_date: string
+  start_time: string | null
+  end_time: string | null
   assigned_to_team: string | null
   created_by: string
   completed_at: string | null

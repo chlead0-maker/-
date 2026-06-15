@@ -8,6 +8,7 @@ import {
   CheckSquare,
   LayoutDashboard,
   ClipboardList,
+  Calendar,
   Users,
   LogOut,
   Plus,
@@ -23,6 +24,7 @@ interface SidebarProps {
 
 const navItems = [
   { href: '/dashboard', label: '대시보드', icon: LayoutDashboard },
+  { href: '/calendar', label: '캘린더', icon: Calendar },
   { href: '/tasks', label: '업무 목록', icon: ClipboardList },
   { href: '/reports', label: '보고서', icon: FileText },
 ]

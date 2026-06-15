@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import type { TaskType, TaskPriority } from '@/lib/types'
+import type { TaskType, TaskPriority, ItemType } from '@/lib/types'
 
 export interface CreateTaskInput {
   title: string
@@ -13,6 +13,50 @@ export interface CreateTaskInput {
   due_date: string
   assignee_ids?: string[]
   team_id?: string
+}
+
+export interface CreateQuickItemInput {
+  title: string
+  item_type: ItemType
+  due_date: string
+  task_type?: TaskType
+  priority?: TaskPriority
+  start_time?: string
+  end_time?: string
+  description?: string
+  assignee_ids?: string[]
+}
+
+export async function createQuickItem(input: CreateQuickItemInput) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('로그인이 필요합니다')
+
+  const { data: task, error } = await supabase
+    .from('tasks')
+    .insert({
+      title: input.title,
+      item_type: input.item_type,
+      task_type: input.task_type || 'daily',
+      priority: input.priority || 'medium',
+      due_date: input.due_date,
+      start_time: input.start_time || null,
+      end_time: input.end_time || null,
+      description: input.description || null,
+      created_by: user.id,
+    })
+    .select()
+    .single()
+
+  if (error || !task) throw new Error(error?.message || '생성 실패')
+
+  const assigneeIds = input.assignee_ids?.length ? input.assignee_ids : [user.id]
+  await supabase.from('task_assignments').insert(
+    assigneeIds.map((id) => ({ task_id: task.id, assignee_id: id }))
+  )
+
+  revalidatePath('/calendar')
+  revalidatePath('/dashboard')
 }
 
 export async function createTask(input: CreateTaskInput) {
