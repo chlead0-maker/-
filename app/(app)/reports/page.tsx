@@ -4,6 +4,7 @@ import {
   startOfWeek, endOfWeek,
   startOfMonth, endOfMonth,
 } from 'date-fns'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import ReportView from '@/components/reports/ReportView'
 import type { Task, TaskAssignment, EmployeeStats, Profile } from '@/lib/types'
@@ -25,22 +26,20 @@ async function fetchTasksForPeriod(
     return (data || []) as Task[]
   }
 
-  // 직원: 본인 할당 업무만
-  const { data: myA } = await supabase
-    .from('task_assignments')
-    .select('task_id')
-    .eq('assignee_id', userId)
-  const taskIds = (myA || []).map((a) => a.task_id)
-  if (!taskIds.length) return []
-
+  // 직원: 조인 1회로 (기존 2회 순차)
   const { data } = await supabase
-    .from('tasks')
-    .select('*')
-    .in('id', taskIds)
-    .gte('due_date', from)
-    .lte('due_date', to)
-    .order('due_date', { ascending: true })
-  return (data || []) as Task[]
+    .from('task_assignments')
+    .select('task:tasks!inner(*)')
+    .eq('assignee_id', userId)
+    .gte('task.due_date', from)
+    .lte('task.due_date', to)
+    .order('task.due_date', { ascending: true })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).map((d: any) => {
+    const t = Array.isArray(d.task) ? d.task[0] : d.task
+    return t as Task
+  }).filter(Boolean)
 }
 
 async function fetchEmployeeStats(
@@ -48,75 +47,55 @@ async function fetchEmployeeStats(
   from: string,
   to: string
 ): Promise<EmployeeStats[]> {
-  const { data: employees } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('is_active', true)
-    .order('full_name')
-
-  if (!employees?.length) return []
-
-  const stats: EmployeeStats[] = []
-  for (const emp of employees) {
-    const { data: assignments } = await supabase
-      .from('task_assignments')
-      .select('status, task:tasks!inner(due_date, status)')
-      .eq('assignee_id', emp.id)
+  // 2개 쿼리 병렬 (기존: N+1 for loop)
+  const [{ data: employees }, { data: allAssignments }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('is_active', true).order('full_name'),
+    supabase.from('task_assignments')
+      .select('assignee_id, status, task:tasks!inner(due_date, status)')
       .gte('task.due_date', from)
-      .lte('task.due_date', to)
+      .lte('task.due_date', to),
+  ])
 
-    const total = assignments?.length || 0
-    const completed = assignments?.filter((a) => a.status === 'completed').length || 0
+  return (employees || []).map((emp) => {
+    const empA = (allAssignments || []).filter((a) => a.assignee_id === emp.id)
+    const total = empA.length
+    const completed = empA.filter((a) => a.status === 'completed').length
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const overdue = assignments?.filter((a: any) => {
+    const overdue = empA.filter((a: any) => {
       const t = Array.isArray(a.task) ? a.task[0] : a.task
       return t?.status === 'overdue'
-    }).length || 0
-
-    stats.push({
+    }).length
+    return {
       profile: emp as Profile,
       totalTasks: total,
       completedTasks: completed,
       pendingTasks: total - completed,
       overdueTasks: overdue,
-    })
-  }
-  return stats
+    }
+  })
 }
 
 export default async function ReportsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-  if (!profile) redirect('/login')
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
 
   const isAdmin = profile.role === 'admin'
   const today = new Date()
+  const supabase = await createClient()
 
-  // 기간 계산
   const dailyFrom = format(today, 'yyyy-MM-dd')
   const dailyTo = dailyFrom
-
   const weekFrom = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const weekTo = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-
   const monthFrom = format(startOfMonth(today), 'yyyy-MM-dd')
   const monthTo = format(endOfMonth(today), 'yyyy-MM-dd')
 
-  // 병렬 데이터 조회
   const [dailyTasks, weeklyTasks, monthlyTasks] = await Promise.all([
     fetchTasksForPeriod(supabase, dailyFrom, dailyTo, user.id, isAdmin),
     fetchTasksForPeriod(supabase, weekFrom, weekTo, user.id, isAdmin),
     fetchTasksForPeriod(supabase, monthFrom, monthTo, user.id, isAdmin),
   ])
 
-  // 관리자: 직원별 통계 추가
   let dailyStats: EmployeeStats[] | undefined
   let weeklyStats: EmployeeStats[] | undefined
   let monthlyStats: EmployeeStats[] | undefined
@@ -129,7 +108,6 @@ export default async function ReportsPage() {
     ])
   }
 
-  // 직원: 본인 할당 정보
   let myAllAssignments: TaskAssignment[] = []
   if (!isAdmin) {
     const { data } = await supabase

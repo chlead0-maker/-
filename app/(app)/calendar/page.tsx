@@ -1,24 +1,19 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import CalendarView from '@/components/calendar/CalendarView'
 
 export default async function CalendarPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  const isAdmin = profile?.role === 'admin'
-
+  const isAdmin = profile.role === 'admin'
   let employees: { id: string; full_name: string }[] = []
+
   if (isAdmin) {
+    const supabase = await createClient()
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name')

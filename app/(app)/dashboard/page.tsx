@@ -1,24 +1,22 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import AdminDashboard from '@/components/dashboard/AdminDashboard'
 import EmployeeDashboard from '@/components/dashboard/EmployeeDashboard'
 import type { Task, TaskAssignment, EmployeeStats, Profile } from '@/lib/types'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  // 레이아웃에서 이미 호출했으면 캐시 반환 (추가 DB 왕복 없음)
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('*').eq('id', user.id).single()
-  if (!profile) redirect('/login')
+  const supabase = await createClient()
 
   if (profile.role === 'admin') {
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
     const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
-    // 3개 쿼리 병렬 실행 (기존: 순차 + N+1)
     const [{ data: tasks }, { data: employees }, { data: weekAssignments }] = await Promise.all([
       supabase.from('tasks')
         .select('*, assignments:task_assignments(*, assignee:profiles(*))')
@@ -31,7 +29,6 @@ export default async function DashboardPage() {
         .lte('task.due_date', weekEnd),
     ])
 
-    // JS에서 집계 (DB 왕복 없음)
     const employeeStats: EmployeeStats[] = (employees || []).map((emp) => {
       const empA = (weekAssignments || []).filter((a) => a.assignee_id === emp.id)
       const total = empA.length
@@ -58,7 +55,6 @@ export default async function DashboardPage() {
     )
   }
 
-  // 직원: 조인으로 1회 쿼리 (기존: 2회 순차)
   const { data: myData } = await supabase
     .from('task_assignments')
     .select('*, task:tasks!inner(*)')

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import { buttonVariants } from '@/components/ui/button'
 import TasksTabsUI from '@/components/tasks/TasksTabsUI'
@@ -28,55 +29,52 @@ async function fetchTasks(
     to = format(endOfMonth(today), 'yyyy-MM-dd')
   }
 
-  let query = supabase
-    .from('tasks')
-    .select('*, assignments:task_assignments(*, assignee:profiles(*))')
-    .eq('task_type', type)
-    .gte('due_date', from)
-    .lte('due_date', to)
-    .order('due_date', { ascending: true })
-
-  if (!isAdmin) {
-    const { data: myAssignments } = await supabase
-      .from('task_assignments')
-      .select('task_id')
-      .eq('assignee_id', userId)
-    const taskIds = (myAssignments || []).map((a) => a.task_id)
-    if (taskIds.length === 0) return []
-    query = query.in('id', taskIds)
+  if (isAdmin) {
+    const { data } = await supabase
+      .from('tasks')
+      .select('*, assignments:task_assignments(*, assignee:profiles(*))')
+      .eq('task_type', type)
+      .gte('due_date', from)
+      .lte('due_date', to)
+      .order('due_date', { ascending: true })
+    return (data || []) as Task[]
   }
 
-  const { data } = await query
-  return (data || []) as Task[]
+  // 직원: 조인 1회로 (기존 2회 순차)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await supabase
+    .from('task_assignments')
+    .select('task:tasks!inner(*)')
+    .eq('assignee_id', userId)
+    .eq('task.task_type', type)
+    .gte('task.due_date', from)
+    .lte('task.due_date', to)
+    .order('task.due_date', { ascending: true })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).map((d: any) => {
+    const t = Array.isArray(d.task) ? d.task[0] : d.task
+    return t as Task
+  }).filter(Boolean)
 }
 
 export default async function TasksPage() {
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
+
+  const isAdmin = profile.role === 'admin'
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  const isAdmin = profile?.role === 'admin'
-
-  const { data: myAssignmentsAll } = isAdmin
-    ? { data: [] }
-    : await supabase
-        .from('task_assignments')
-        .select('*')
-        .eq('assignee_id', user.id)
-
-  const [dailyTasks, weeklyTasks, monthlyTasks] = await Promise.all([
+  const [dailyTasks, weeklyTasks, monthlyTasks, myAssignmentsData] = await Promise.all([
     fetchTasks(supabase, 'daily', user.id, isAdmin),
     fetchTasks(supabase, 'weekly', user.id, isAdmin),
     fetchTasks(supabase, 'monthly', user.id, isAdmin),
+    isAdmin
+      ? Promise.resolve({ data: [] })
+      : supabase.from('task_assignments').select('*').eq('assignee_id', user.id),
   ])
 
-  const myAssignments = (myAssignmentsAll || []) as TaskAssignment[]
+  const myAssignments = (myAssignmentsData.data || []) as TaskAssignment[]
 
   return (
     <div className="p-8">

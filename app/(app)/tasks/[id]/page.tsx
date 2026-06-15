@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import TaskStatusBadge from '@/components/tasks/TaskStatusBadge'
 import TaskPriorityBadge from '@/components/tasks/TaskPriorityBadge'
@@ -17,17 +18,11 @@ export default async function TaskDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
+
+  const isAdmin = profile.role === 'admin'
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  const isAdmin = profile?.role === 'admin'
 
   const { data: task } = await supabase
     .from('tasks')

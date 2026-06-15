@@ -1,28 +1,21 @@
 import { redirect } from 'next/navigation'
+import { getAuthUser, getProfile } from '@/lib/supabase/cached'
 import { createClient } from '@/lib/supabase/server'
 import TaskForm from '@/components/tasks/TaskForm'
 import type { Profile, Team } from '@/lib/types'
 
 export default async function NewTaskPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
+  if (!user || !profile) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+  const isAdmin = profile.role === 'admin'
 
-  const isAdmin = profile?.role === 'admin'
-
-  // 관리자: 직원 목록 + 팀 목록 필요. 직원: 빈 배열
   const [{ data: employees }, { data: teams }] = await Promise.all([
     isAdmin
-      ? supabase.from('profiles').select('*').eq('role', 'employee').eq('is_active', true).order('full_name')
+      ? (await createClient()).from('profiles').select('*').eq('role', 'employee').eq('is_active', true).order('full_name')
       : { data: [] },
     isAdmin
-      ? supabase.from('teams').select('*').order('name')
+      ? (await createClient()).from('teams').select('*').order('name')
       : { data: [] },
   ])
 
