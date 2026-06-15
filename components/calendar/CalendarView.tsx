@@ -17,18 +17,22 @@ interface Props {
   isAdmin: boolean
   currentUserId: string
   employees: { id: string; full_name: string }[]
+  initialItems?: Task[]
+  initialAssignments?: TaskAssignment[]
 }
 
 const DAY_HEADERS = ['월', '화', '수', '목', '금', '토', '일']
 
-export default function CalendarView({ canViewAll, isAdmin, currentUserId, employees }: Props) {
+export default function CalendarView({ canViewAll, isAdmin, currentUserId, employees, initialItems = [], initialAssignments = [] }: Props) {
   // useMemo로 안정적인 참조 — 매 렌더마다 새 객체가 생성되는 것을 방지
   const supabase = useMemo(() => createClient(), [])
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [items, setItems] = useState<Task[]>([])
-  const [myAssignments, setMyAssignments] = useState<TaskAssignment[]>([])
+  const [items, setItems] = useState<Task[]>(initialItems)
+  const [myAssignments, setMyAssignments] = useState<TaskAssignment[]>(initialAssignments)
   const [modalState, setModalState] = useState<{ date: Date; type: ItemType } | null>(null)
+  // 서버에서 이미 이번 달 데이터를 받았으므로 첫 마운트 fetch 스킵
+  const [skipInitialFetch, setSkipInitialFetch] = useState(initialItems.length > 0)
 
   const fetchItems = useCallback(async () => {
     const from = format(startOfMonth(currentDate), 'yyyy-MM-dd')
@@ -73,7 +77,13 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
     }
   }, [currentDate, canViewAll, currentUserId, supabase])
 
-  useEffect(() => { fetchItems() }, [fetchItems])
+  useEffect(() => {
+    if (skipInitialFetch) {
+      setSkipInitialFetch(false)
+      return
+    }
+    fetchItems()
+  }, [fetchItems]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const calStart = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 })
   const calEnd = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 })

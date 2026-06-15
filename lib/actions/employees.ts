@@ -60,7 +60,7 @@ export async function resetEmployeePassword(email: string) {
   if (error) throw new Error(error.message)
 }
 
-export async function updateEmployeeRole(profileId: string, role: 'admin' | 'employee') {
+export async function updateEmployeeRole(profileId: string, role: 'team_lead' | 'employee') {
   const supabase = await createClient()
   const { error } = await supabase.from('profiles').update({ role }).eq('id', profileId)
   if (error) throw new Error(error.message)

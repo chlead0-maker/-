@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  approveEmployee, rejectEmployee, deleteEmployee, resetEmployeePassword,
+  approveEmployee, rejectEmployee, deleteEmployee, resetEmployeePassword, updateEmployeeRole,
 } from '@/lib/actions/employees'
 import InviteEmployeeDialog from '@/components/employees/InviteEmployeeDialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -13,8 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { UserPlus, Check, X, Clock, KeyRound, Trash2, Loader2 } from 'lucide-react'
-import type { Profile } from '@/lib/types'
+import type { Profile, Role } from '@/lib/types'
 
 interface EmployeesClientProps {
   initialActive: Profile[]
@@ -29,6 +30,7 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
   const [resetTarget, setResetTarget] = useState<Profile | null>(null)
   const [resetDone, setResetDone] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [roleChangingId, setRoleChangingId] = useState<string | null>(null)
 
   function handleApprove(id: string) {
     startTransition(async () => {
@@ -65,6 +67,16 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
       setResetDone(true)
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  async function handleRoleChange(profileId: string, newRole: 'team_lead' | 'employee') {
+    setRoleChangingId(profileId)
+    try {
+      await updateEmployeeRole(profileId, newRole)
+      router.refresh()
+    } finally {
+      setRoleChangingId(null)
     }
   }
 
@@ -146,32 +158,15 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
           <CardContent>
             <div className="space-y-3">
               {teamLeads.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-violet-100 text-violet-700 text-sm font-medium">
-                      {p.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
-                    <p className="text-xs text-gray-500 truncate">{p.email}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="bg-violet-100 text-violet-700">팀장</Badge>
-                    <Button size="sm" variant="ghost"
-                      className="h-7 px-2 text-gray-500 hover:text-indigo-600"
-                      title="비밀번호 재설정 이메일 발송"
-                      onClick={() => { setResetTarget(p); setResetDone(false) }}>
-                      <KeyRound className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost"
-                      className="h-7 px-2 text-gray-500 hover:text-red-600"
-                      title="계정 삭제"
-                      onClick={() => setDeleteTarget(p)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                <MemberRow
+                  key={p.id}
+                  profile={p}
+                  currentRole="team_lead"
+                  isChangingRole={roleChangingId === p.id}
+                  onRoleChange={(newRole) => handleRoleChange(p.id, newRole)}
+                  onResetPassword={() => { setResetTarget(p); setResetDone(false) }}
+                  onDelete={() => setDeleteTarget(p)}
+                />
               ))}
             </div>
           </CardContent>
@@ -193,32 +188,15 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
           ) : (
             <div className="space-y-3">
               {employees.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-indigo-100 text-indigo-700 text-sm font-medium">
-                      {p.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{p.full_name}</p>
-                    <p className="text-xs text-gray-500 truncate">{p.email}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="bg-gray-100 text-gray-600">직원</Badge>
-                    <Button size="sm" variant="ghost"
-                      className="h-7 px-2 text-gray-500 hover:text-indigo-600"
-                      title="비밀번호 재설정 이메일 발송"
-                      onClick={() => { setResetTarget(p); setResetDone(false) }}>
-                      <KeyRound className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost"
-                      className="h-7 px-2 text-gray-500 hover:text-red-600"
-                      title="계정 삭제"
-                      onClick={() => setDeleteTarget(p)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                <MemberRow
+                  key={p.id}
+                  profile={p}
+                  currentRole="employee"
+                  isChangingRole={roleChangingId === p.id}
+                  onRoleChange={(newRole) => handleRoleChange(p.id, newRole)}
+                  onResetPassword={() => { setResetTarget(p); setResetDone(false) }}
+                  onDelete={() => setDeleteTarget(p)}
+                />
               ))}
             </div>
           )}
@@ -273,6 +251,72 @@ export default function EmployeesClient({ initialActive, initialPending }: Emplo
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function MemberRow({
+  profile,
+  currentRole,
+  isChangingRole,
+  onRoleChange,
+  onResetPassword,
+  onDelete,
+}: {
+  profile: Profile
+  currentRole: 'team_lead' | 'employee'
+  isChangingRole: boolean
+  onRoleChange: (role: 'team_lead' | 'employee') => void
+  onResetPassword: () => void
+  onDelete: () => void
+}) {
+  const initials = profile.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+  return (
+    <div className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+      <Avatar className="h-9 w-9">
+        <AvatarFallback className={`text-sm font-medium ${currentRole === 'team_lead' ? 'bg-violet-100 text-violet-700' : 'bg-indigo-100 text-indigo-700'}`}>
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900">{profile.full_name}</p>
+        <p className="text-xs text-gray-500 truncate">{profile.email}</p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {/* 직급 변경 셀렉트 */}
+        <div className="relative">
+          {isChangingRole && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/70 rounded">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />
+            </div>
+          )}
+          <Select
+            value={currentRole}
+            onValueChange={(v) => v && onRoleChange(v as 'team_lead' | 'employee')}
+            disabled={isChangingRole}
+          >
+            <SelectTrigger className="h-7 text-xs w-[72px] border-gray-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="employee">직원</SelectItem>
+              <SelectItem value="team_lead">팀장</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" variant="ghost"
+          className="h-7 px-2 text-gray-500 hover:text-indigo-600"
+          title="비밀번호 재설정 이메일 발송"
+          onClick={onResetPassword}>
+          <KeyRound className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost"
+          className="h-7 px-2 text-gray-500 hover:text-red-600"
+          title="계정 삭제"
+          onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   )
 }
