@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
 export async function inviteEmployee(fullName: string, email: string) {
@@ -28,6 +28,7 @@ export async function approveEmployee(profileId: string) {
     .update({ is_active: true })
     .eq('id', profileId)
   if (error) throw new Error(error.message)
+  revalidateTag('profile')
   revalidatePath('/employees')
 }
 
@@ -43,6 +44,7 @@ export async function deleteEmployee(profileId: string) {
   // profiles 삭제 → task_assignments cascade 삭제됨
   const { error } = await supabase.from('profiles').delete().eq('id', profileId)
   if (error) throw new Error(error.message)
+  revalidateTag('profile')
   revalidatePath('/employees')
 }
 
@@ -64,6 +66,7 @@ export async function updateEmployeeRole(profileId: string, role: 'team_lead' | 
   const supabase = await createClient()
   const { error } = await supabase.from('profiles').update({ role }).eq('id', profileId)
   if (error) throw new Error(error.message)
+  revalidateTag('profile')
   revalidatePath('/employees')
 }
 
@@ -74,6 +77,7 @@ export async function deactivateEmployee(profileId: string) {
     .update({ is_active: false })
     .eq('id', profileId)
   if (error) throw new Error(error.message)
+  revalidateTag('profile')
   revalidatePath('/employees')
 }
 
