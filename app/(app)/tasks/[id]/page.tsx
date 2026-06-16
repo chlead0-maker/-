@@ -22,7 +22,7 @@ export default async function TaskDetailPage({
   const [user, profile] = await Promise.all([getAuthUser(), getProfile()])
   if (!user || !profile) redirect('/login')
 
-  const isAdmin = profile.role === 'admin'
+  const isAdmin = profile.role === 'admin' || profile.role === 'team_lead'
   const supabase = await createClient()
 
   const { data: task } = await supabase

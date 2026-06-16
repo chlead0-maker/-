@@ -14,7 +14,8 @@ export default async function TasksPage() {
   if (!user || !profile) redirect('/login')
 
   const isAdmin = profile.role === 'admin'
-  const canViewAll = profile.role === 'admin' || profile.role === 'team_lead'
+  const canAssign = profile.role === 'admin' || profile.role === 'team_lead'
+  const canViewAll = canAssign
   const supabase = await createClient()
 
   const today = new Date()
@@ -62,7 +63,7 @@ export default async function TasksPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">업무 목록</h1>
-        {isAdmin && (
+        {canAssign && (
           <Link
             href="/tasks/new"
             className={cn(buttonVariants(), 'flex items-center gap-2')}
@@ -78,7 +79,7 @@ export default async function TasksPage() {
         weeklyTasks={weeklyTasks}
         monthlyTasks={monthlyTasks}
         myAssignments={myAssignments}
-        isAdmin={isAdmin}
+        isAdmin={canAssign}
       />
     </div>
   )
