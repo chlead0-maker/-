@@ -3,7 +3,15 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import type { TaskType, TaskPriority, ItemType } from '@/lib/types'
+
+function getAdminClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 export interface CreateTaskInput {
   title: string
@@ -144,17 +152,26 @@ export async function updateTaskAssignmentStatus(
 
   if (error) throw new Error(error.message)
 
-  const { data: allAssignments } = await supabase
+  // admin 클라이언트로 조회 — RLS로 인해 본인 assignment만 보이는 문제 방지
+  const admin = getAdminClient()
+  const { data: allAssignments } = await admin
     .from('task_assignments')
     .select('status')
     .eq('task_id', taskId)
 
-  if (allAssignments && allAssignments.every((a) => a.status === 'completed')) {
-    await supabase
-      .from('tasks')
-      .update({ status: 'completed', completed_at: new Date().toISOString() })
-      .eq('id', taskId)
-  }
+  const newTaskStatus = allAssignments && allAssignments.every((a) => a.status === 'completed')
+    ? 'completed'
+    : allAssignments?.some((a) => a.status === 'in_progress' || a.status === 'completed')
+    ? 'in_progress'
+    : 'pending'
+
+  await admin
+    .from('tasks')
+    .update({
+      status: newTaskStatus,
+      ...(newTaskStatus === 'completed' ? { completed_at: new Date().toISOString() } : {}),
+    })
+    .eq('id', taskId)
 
   revalidatePath('/tasks')
   revalidatePath('/dashboard')
