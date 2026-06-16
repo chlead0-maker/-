@@ -2,6 +2,14 @@
 
 import { revalidatePath, updateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+
+function getAdminClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 export async function inviteEmployee(fullName: string, email: string) {
   const supabase = await createClient()
@@ -33,16 +41,15 @@ export async function approveEmployee(profileId: string) {
 }
 
 export async function rejectEmployee(profileId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('profiles').delete().eq('id', profileId)
+  // auth.users 삭제 → profiles ON DELETE CASCADE
+  const { error } = await getAdminClient().auth.admin.deleteUser(profileId)
   if (error) throw new Error(error.message)
   revalidatePath('/employees')
 }
 
 export async function deleteEmployee(profileId: string) {
-  const supabase = await createClient()
-  // profiles 삭제 → task_assignments cascade 삭제됨
-  const { error } = await supabase.from('profiles').delete().eq('id', profileId)
+  // auth.users 삭제 → profiles ON DELETE CASCADE → task_assignments CASCADE
+  const { error } = await getAdminClient().auth.admin.deleteUser(profileId)
   if (error) throw new Error(error.message)
   updateTag('profile')
   revalidatePath('/employees')
