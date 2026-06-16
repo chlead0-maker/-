@@ -40,10 +40,12 @@ export interface CreateQuickItemInput {
 
 export async function createQuickItem(input: CreateQuickItemInput) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('로그인이 필요합니다')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('로그인이 필요합니다')
+  const user = session.user
 
-  const { data: task, error } = await supabase
+  const admin = getAdminClient()
+  const { data: task, error } = await admin
     .from('tasks')
     .insert({
       title: input.title,
@@ -64,7 +66,7 @@ export async function createQuickItem(input: CreateQuickItemInput) {
   if (error || !task) throw new Error(error?.message || '생성 실패')
 
   const assigneeIds = input.assignee_ids?.length ? input.assignee_ids : [user.id]
-  await supabase.from('task_assignments').insert(
+  await admin.from('task_assignments').insert(
     assigneeIds.map((id) => ({ task_id: task.id, assignee_id: id }))
   )
 
@@ -74,10 +76,12 @@ export async function createQuickItem(input: CreateQuickItemInput) {
 
 export async function createTask(input: CreateTaskInput) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('로그인이 필요합니다')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('로그인이 필요합니다')
+  const user = session.user
 
-  const { data: task, error: taskError } = await supabase
+  const admin = getAdminClient()
+  const { data: task, error: taskError } = await admin
     .from('tasks')
     .insert({
       title: input.title,
@@ -103,12 +107,12 @@ export async function createTask(input: CreateTaskInput) {
       task_id: task.id,
       assignee_id: id,
     }))
-    const { error: assignError } = await supabase.from('task_assignments').insert(assignments)
+    const { error: assignError } = await admin.from('task_assignments').insert(assignments)
     if (assignError) throw new Error(assignError.message)
   }
 
   if (input.team_id) {
-    const { data: members } = await supabase
+    const { data: members } = await admin
       .from('team_members')
       .select('profile_id')
       .eq('team_id', input.team_id)
@@ -117,7 +121,7 @@ export async function createTask(input: CreateTaskInput) {
         task_id: task.id,
         assignee_id: m.profile_id,
       }))
-      await supabase.from('task_assignments').upsert(assignments, {
+      await admin.from('task_assignments').upsert(assignments, {
         onConflict: 'task_id,assignee_id',
       })
     }
@@ -221,28 +225,21 @@ export async function addTaskLog(
 }
 
 export async function deleteTaskLog(logId: string, taskId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('task_logs').delete().eq('id', logId)
+  const { error } = await getAdminClient().from('task_logs').delete().eq('id', logId)
   if (error) throw new Error(error.message)
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath('/reports')
 }
 
 export async function updateTaskStatus(taskId: string, status: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('로그인이 필요합니다')
-
-  const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId)
+  const { error } = await getAdminClient().from('tasks').update({ status }).eq('id', taskId)
   if (error) throw new Error(error.message)
-
   revalidatePath('/tasks')
   revalidatePath('/dashboard')
 }
 
 export async function deleteTask(taskId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase.from('tasks').delete().eq('id', taskId)
+  const { error } = await getAdminClient().from('tasks').delete().eq('id', taskId)
   if (error) throw new Error(error.message)
   revalidatePath('/tasks')
   revalidatePath('/dashboard')
