@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import NotificationBell from '@/components/notifications/NotificationBell'
 
 interface SidebarProps {
   profile: Profile
@@ -61,9 +62,12 @@ export default function Sidebar({ profile }: SidebarProps) {
   return (
     <aside className="flex flex-col w-64 min-h-screen bg-white border-r border-gray-200">
       {/* 로고 */}
-      <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-100">
-        <CheckSquare className="h-6 w-6 text-indigo-600" />
-        <span className="text-lg font-bold text-gray-900">팀 캘린더</span>
+      <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <CheckSquare className="h-6 w-6 text-indigo-600" />
+          <span className="text-lg font-bold text-gray-900">팀 캘린더</span>
+        </div>
+        <NotificationBell userId={profile.id} />
       </div>
 
       {/* 업무 추가 버튼 */}

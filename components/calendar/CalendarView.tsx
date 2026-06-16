@@ -43,7 +43,7 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
       const [{ data: tasksData }, { data: assignmentsData }] = await Promise.all([
         supabase
           .from('tasks')
-          .select('*, assignments:task_assignments(*, assignee:profiles(*))')
+          .select('*, creator:profiles!created_by(id,full_name), assignments:task_assignments(*, assignee:profiles!assignee_id(*))')
           .gte('due_date', from)
           .lte('due_date', to)
           .order('due_date'),
@@ -156,21 +156,42 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
                   {format(day, 'd')}
                 </div>
                 <div className="space-y-0.5">
-                  {visibleChips.map((item) => (
-                    <div key={item.id} className={`text-[11px] px-1.5 py-0.5 rounded truncate leading-tight
-                      ${item.item_type === 'event'
-                        ? 'bg-sky-100 text-sky-700'
-                        : item.status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : item.status === 'overdue'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-indigo-100 text-indigo-700'
-                      }`}>
-                      {item.item_type === 'event' && item.start_time
-                        ? `${item.start_time.slice(0, 5)} ${item.title}`
-                        : item.title}
-                    </div>
-                  ))}
+                  {visibleChips.map((item) => {
+                    // employees 직접 조회 (JOIN 실패 방어)
+                    const displayNames: string[] = canViewAll
+                      ? (item.assignments?.length
+                          ? item.assignments
+                              .map((a) => employees.find((e) => e.id === a.assignee_id)?.full_name ?? null)
+                              .filter((n): n is string => Boolean(n))
+                          : (() => {
+                              const name = employees.find((e) => e.id === item.created_by)?.full_name
+                              return name ? [name] : []
+                            })())
+                      : []
+                    return (
+                      <div key={item.id} className={`text-[11px] px-1.5 py-0.5 rounded leading-tight flex items-center gap-1 overflow-hidden
+                        ${item.item_type === 'event'
+                          ? 'bg-sky-100 text-sky-700'
+                          : item.status === 'completed'
+                            ? 'bg-green-100 text-green-700'
+                            : item.status === 'overdue'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-indigo-100 text-indigo-700'
+                        }`}>
+                        <span className="truncate flex-1 min-w-0">
+                          {item.item_type === 'event' && item.start_time
+                            ? `${item.start_time.slice(0, 5)} ${item.title}`
+                            : item.title}
+                        </span>
+                        {displayNames.length > 0 && (
+                          <span className="shrink-0 opacity-70 font-medium">
+                            {displayNames[0]}
+                            {displayNames.length > 1 ? ` 외 ${displayNames.length - 1}명` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
                   {hiddenCount > 0 && (
                     <p className="text-[10px] text-gray-400 px-1">+{hiddenCount}개 더</p>
                   )}
@@ -204,6 +225,8 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
           items={getItemsForDay(selectedDate)}
           myAssignments={myAssignments}
           currentUserId={currentUserId}
+          canViewAll={canViewAll}
+          employees={employees}
           onClose={() => setSelectedDate(null)}
           onAdd={handleAdd}
           onRefresh={fetchItems}

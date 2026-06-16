@@ -70,6 +70,19 @@ export async function createQuickItem(input: CreateQuickItemInput) {
     assigneeIds.map((id) => ({ task_id: task.id, assignee_id: id }))
   )
 
+  const notifRecipients = assigneeIds.filter((id) => id !== user.id)
+  if (notifRecipients.length > 0) {
+    await admin.from('notifications').insert(
+      notifRecipients.map((uid) => ({
+        user_id: uid,
+        type: task.item_type === 'event' ? 'task_assigned' : 'task_assigned',
+        title: task.item_type === 'event' ? '새 일정이 추가되었습니다' : '새 업무가 할당되었습니다',
+        message: task.title,
+        task_id: task.id,
+      }))
+    )
+  }
+
   revalidatePath('/calendar')
   revalidatePath('/dashboard')
 }
@@ -102,6 +115,8 @@ export async function createTask(input: CreateTaskInput) {
     input.assignee_ids = [user.id]
   }
 
+  const directAssigneeIds: string[] = []
+
   if (input.assignee_ids && input.assignee_ids.length > 0) {
     const assignments = input.assignee_ids.map((id) => ({
       task_id: task.id,
@@ -109,6 +124,7 @@ export async function createTask(input: CreateTaskInput) {
     }))
     const { error: assignError } = await admin.from('task_assignments').insert(assignments)
     if (assignError) throw new Error(assignError.message)
+    directAssigneeIds.push(...input.assignee_ids)
   }
 
   if (input.team_id) {
@@ -124,7 +140,21 @@ export async function createTask(input: CreateTaskInput) {
       await admin.from('task_assignments').upsert(assignments, {
         onConflict: 'task_id,assignee_id',
       })
+      directAssigneeIds.push(...members.map((m) => m.profile_id))
     }
+  }
+
+  const notifRecipients = [...new Set(directAssigneeIds)].filter((id) => id !== user.id)
+  if (notifRecipients.length > 0) {
+    await admin.from('notifications').insert(
+      notifRecipients.map((uid) => ({
+        user_id: uid,
+        type: 'task_assigned',
+        title: '새 업무가 할당되었습니다',
+        message: task.title,
+        task_id: task.id,
+      }))
+    )
   }
 
   revalidatePath('/tasks')
@@ -219,6 +249,25 @@ export async function addTaskLog(
     file_name: fileName || null,
   })
   if (error) throw new Error(error.message)
+
+  const admin = getAdminClient()
+  const [{ data: task }, { data: assignments }] = await Promise.all([
+    admin.from('tasks').select('title').eq('id', taskId).single(),
+    admin.from('task_assignments').select('assignee_id').eq('task_id', taskId),
+  ])
+
+  const recipients = (assignments || []).map((a) => a.assignee_id).filter((id) => id !== user.id)
+  if (recipients.length > 0 && task) {
+    await admin.from('notifications').insert(
+      recipients.map((uid) => ({
+        user_id: uid,
+        type: 'comment_added',
+        title: '업무에 댓글이 달렸습니다',
+        message: `${task.title}: ${content.slice(0, 60)}${content.length > 60 ? '…' : ''}`,
+        task_id: taskId,
+      }))
+    )
+  }
 
   revalidatePath(`/tasks/${taskId}`)
   revalidatePath('/reports')

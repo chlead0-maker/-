@@ -29,7 +29,7 @@ export default async function CalendarPage() {
       supabase.from('profiles').select('id, full_name').eq('is_active', true).order('full_name'),
       supabase
         .from('tasks')
-        .select('*, assignments:task_assignments(*, assignee:profiles(*))')
+        .select('*, creator:profiles!created_by(id,full_name), assignments:task_assignments(*, assignee:profiles!assignee_id(*))')
         .gte('due_date', from)
         .lte('due_date', to)
         .order('due_date'),

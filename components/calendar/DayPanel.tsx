@@ -13,6 +13,8 @@ interface Props {
   items: Task[]
   myAssignments: TaskAssignment[]
   currentUserId: string
+  canViewAll?: boolean
+  employees?: { id: string; full_name: string }[]
   onClose: () => void
   onAdd: (type: ItemType) => void
   onRefresh: () => void
@@ -34,7 +36,7 @@ const statusLabel: Record<string, string> = {
   cancelled: '취소',
 }
 
-export default function DayPanel({ date, items, myAssignments, onClose, onAdd, onRefresh }: Props) {
+export default function DayPanel({ date, items, myAssignments, canViewAll, employees = [], onClose, onAdd, onRefresh }: Props) {
   const events = items.filter((i) => i.item_type === 'event').sort((a, b) =>
     (a.start_time || '99:99').localeCompare(b.start_time || '99:99')
   )
@@ -159,6 +161,17 @@ export default function DayPanel({ date, items, myAssignments, onClose, onAdd, o
                           <p className={`text-xs mt-0.5 ${statusColor[item.status]}`}>
                             {myA?.status === 'completed' ? '완료' : statusLabel[item.status]}
                           </p>
+                          {canViewAll && (() => {
+                            // employees 직접 조회 (JOIN 실패 방어)
+                            const names = item.assignments?.length
+                              ? item.assignments
+                                  .map((a) => employees.find((e) => e.id === a.assignee_id)?.full_name ?? null)
+                                  .filter(Boolean).join(', ')
+                              : employees.find((e) => e.id === item.created_by)?.full_name ?? null
+                            return names ? (
+                              <p className="text-xs text-indigo-400 mt-0.5 truncate">담당: {names}</p>
+                            ) : null
+                          })()}
                         </Link>
                       </div>
                     )

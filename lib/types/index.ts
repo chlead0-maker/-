@@ -87,6 +87,17 @@ export interface TaskWithDetails extends Task {
   creator: Profile
 }
 
+export interface AppNotification {
+  id: string
+  user_id: string
+  type: 'task_assigned' | 'comment_added'
+  title: string
+  message: string | null
+  task_id: string | null
+  is_read: boolean
+  created_at: string
+}
+
 export interface EmployeeStats {
   profile: Profile
   totalTasks: number
