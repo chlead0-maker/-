@@ -204,7 +204,7 @@ export default function DayPanel({ date, items, myAssignments, canViewAll, emplo
                           {canMove && !isMoving && (
                             <button
                               onClick={(e) => openMovePanel(e, item.id)}
-                              className="mt-0.5 shrink-0 text-gray-300 hover:text-amber-500 transition-colors opacity-0 group-hover:opacity-100"
+                              className="mt-0.5 shrink-0 text-gray-200 hover:text-amber-500 transition-colors"
                               title="날짜 이관"
                             >
                               <CalendarArrowUp className="h-3.5 w-3.5" />
