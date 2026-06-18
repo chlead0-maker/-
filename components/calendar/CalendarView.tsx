@@ -136,8 +136,16 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
             const isSelected = selectedDate ? isSameDay(day, selectedDate) : false
             const today = isToday(day)
             const events = dayItems.filter((i) => i.item_type === 'event')
-            const incompleteTasks = dayItems.filter((i) => i.item_type !== 'event' && i.status !== 'completed')
-            const completedTasks = dayItems.filter((i) => i.item_type !== 'event' && i.status === 'completed')
+            const incompleteTasks = dayItems.filter((i) => {
+              if (i.item_type === 'event') return false
+              const a = myAssignments.find((a) => a.task_id === i.id)
+              return !(a?.status === 'completed' || i.status === 'completed')
+            })
+            const completedTasks = dayItems.filter((i) => {
+              if (i.item_type === 'event') return false
+              const a = myAssignments.find((a) => a.task_id === i.id)
+              return a?.status === 'completed' || i.status === 'completed'
+            })
             const MAX_CHIPS = 3
             const allChips = [...events, ...incompleteTasks, ...completedTasks]
             const visibleChips = allChips.slice(0, MAX_CHIPS)
@@ -169,7 +177,8 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
                               return name ? [name] : []
                             })())
                       : []
-                    const isDone = item.item_type !== 'event' && item.status === 'completed'
+                    const myA = myAssignments.find((a) => a.task_id === item.id)
+                    const isDone = item.item_type !== 'event' && (myA?.status === 'completed' || item.status === 'completed')
                     return (
                       <div
                         key={item.id}
