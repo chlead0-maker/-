@@ -4,8 +4,8 @@ import { useState, useTransition } from 'react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import Link from 'next/link'
-import { Plus, X, CheckCircle2, Clock, Circle, Loader2 } from 'lucide-react'
-import { completeAssignmentQuick } from '@/lib/actions/tasks'
+import { Plus, X, CheckCircle2, Clock, Circle, Loader2, CalendarArrowUp } from 'lucide-react'
+import { completeAssignmentQuick, moveTaskDate } from '@/lib/actions/tasks'
 import type { Task, TaskAssignment, ItemType } from '@/lib/types'
 
 interface Props {
@@ -40,8 +40,14 @@ export default function DayPanel({ date, items, myAssignments, canViewAll, emplo
   const events = items.filter((i) => i.item_type === 'event').sort((a, b) =>
     (a.start_time || '99:99').localeCompare(b.start_time || '99:99')
   )
-  const tasks = items.filter((i) => i.item_type !== 'event')
+  const incompleteTasks = items.filter((i) => i.item_type !== 'event' && i.status !== 'completed')
+  const completedTasks = items.filter((i) => i.item_type !== 'event' && i.status === 'completed')
+  const tasks = [...incompleteTasks, ...completedTasks]
+
   const [completing, setCompleting] = useState<string | null>(null)
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null)
+  const [moveDate, setMoveDate] = useState('')
+  const [moving, setMoving] = useState(false)
   const [, startTransition] = useTransition()
 
   function getMyAssignment(taskId: string) {
@@ -60,6 +66,25 @@ export default function DayPanel({ date, items, myAssignments, canViewAll, emplo
         setCompleting(null)
       }
     })
+  }
+
+  function openMovePanel(e: React.MouseEvent, taskId: string) {
+    e.preventDefault()
+    e.stopPropagation()
+    setMovingTaskId(taskId)
+    setMoveDate('')
+  }
+
+  async function handleMove(taskId: string) {
+    if (!moveDate) return
+    setMoving(true)
+    try {
+      await moveTaskDate(taskId, moveDate)
+      setMovingTaskId(null)
+      onRefresh()
+    } finally {
+      setMoving(false)
+    }
   }
 
   return (
@@ -127,52 +152,93 @@ export default function DayPanel({ date, items, myAssignments, canViewAll, emplo
             {tasks.length > 0 && (
               <section>
                 <p className="text-xs font-semibold text-indigo-600 mb-2 uppercase tracking-wide">할일</p>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {tasks.map((item) => {
                     const myA = getMyAssignment(item.id)
                     const isCompleted = myA?.status === 'completed' || item.status === 'completed'
                     const canComplete = myA && myA.status !== 'completed' && item.status !== 'cancelled'
                     const isCompletingThis = completing === myA?.id
+                    const canMove = !isCompleted && item.status !== 'cancelled' && (canViewAll || !!myA)
+                    const isMoving = movingTaskId === item.id
 
                     return (
-                      <div key={item.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-indigo-50 transition-colors group">
-                        {/* 완료 버튼 / 상태 아이콘 */}
-                        {canComplete ? (
-                          <button
-                            onClick={(e) => handleComplete(e, myA.id)}
-                            disabled={!!completing}
-                            className="mt-0.5 shrink-0 text-gray-300 hover:text-green-500 transition-colors disabled:opacity-50"
-                            title="완료 처리"
-                          >
-                            {isCompletingThis
-                              ? <Loader2 className="h-4 w-4 animate-spin text-green-400" />
-                              : <Circle className="h-4 w-4" />
-                            }
-                          </button>
-                        ) : (
-                          isCompleted
-                            ? <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                            : <Circle className={`h-4 w-4 mt-0.5 shrink-0 ${item.status === 'overdue' ? 'text-red-400' : 'text-gray-200'}`} />
+                      <div key={item.id} className={`rounded-lg transition-colors ${isCompleted ? 'opacity-45' : ''}`}>
+                        <div className={`flex items-start gap-2 p-2 rounded-lg hover:bg-indigo-50 transition-colors group`}>
+                          {/* 완료 버튼 / 상태 아이콘 */}
+                          {canComplete ? (
+                            <button
+                              onClick={(e) => handleComplete(e, myA.id)}
+                              disabled={!!completing}
+                              className="mt-0.5 shrink-0 text-gray-300 hover:text-green-500 transition-colors disabled:opacity-50"
+                              title="완료 처리"
+                            >
+                              {isCompletingThis
+                                ? <Loader2 className="h-4 w-4 animate-spin text-green-400" />
+                                : <Circle className="h-4 w-4" />
+                              }
+                            </button>
+                          ) : (
+                            isCompleted
+                              ? <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                              : <Circle className={`h-4 w-4 mt-0.5 shrink-0 ${item.status === 'overdue' ? 'text-red-400' : 'text-gray-200'}`} />
+                          )}
+                          <Link href={`/tasks/${item.id}`} className="flex-1 min-w-0">
+                            <p className={`text-sm truncate ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                              {item.title}
+                            </p>
+                            <p className={`text-xs mt-0.5 ${statusColor[item.status]}`}>
+                              {myA?.status === 'completed' ? '완료' : statusLabel[item.status]}
+                            </p>
+                            {canViewAll && (() => {
+                              const names = item.assignments?.length
+                                ? item.assignments
+                                    .map((a) => employees.find((e) => e.id === a.assignee_id)?.full_name ?? null)
+                                    .filter(Boolean).join(', ')
+                                : employees.find((e) => e.id === item.created_by)?.full_name ?? null
+                              return names ? (
+                                <p className="text-xs text-indigo-400 mt-0.5 truncate">담당: {names}</p>
+                              ) : null
+                            })()}
+                          </Link>
+                          {/* 이관 버튼 */}
+                          {canMove && !isMoving && (
+                            <button
+                              onClick={(e) => openMovePanel(e, item.id)}
+                              className="mt-0.5 shrink-0 text-gray-300 hover:text-amber-500 transition-colors opacity-0 group-hover:opacity-100"
+                              title="날짜 이관"
+                            >
+                              <CalendarArrowUp className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 이관 날짜 선택 패널 */}
+                        {isMoving && (
+                          <div className="mx-2 mb-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-[11px] font-medium text-amber-700 mb-1.5">이관할 날짜 선택</p>
+                            <input
+                              type="date"
+                              value={moveDate}
+                              onChange={(e) => setMoveDate(e.target.value)}
+                              className="w-full text-xs border border-amber-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            />
+                            <div className="flex gap-1.5 mt-2">
+                              <button
+                                onClick={() => handleMove(item.id)}
+                                disabled={!moveDate || moving}
+                                className="flex-1 py-1 text-[11px] font-medium bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                              >
+                                {moving ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : '이관'}
+                              </button>
+                              <button
+                                onClick={() => setMovingTaskId(null)}
+                                className="px-2 py-1 text-[11px] text-gray-500 hover:text-gray-700 border border-gray-200 rounded transition-colors"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
                         )}
-                        <Link href={`/tasks/${item.id}`} className="flex-1 min-w-0">
-                          <p className={`text-sm truncate ${isCompleted ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                            {item.title}
-                          </p>
-                          <p className={`text-xs mt-0.5 ${statusColor[item.status]}`}>
-                            {myA?.status === 'completed' ? '완료' : statusLabel[item.status]}
-                          </p>
-                          {canViewAll && (() => {
-                            // employees 직접 조회 (JOIN 실패 방어)
-                            const names = item.assignments?.length
-                              ? item.assignments
-                                  .map((a) => employees.find((e) => e.id === a.assignee_id)?.full_name ?? null)
-                                  .filter(Boolean).join(', ')
-                              : employees.find((e) => e.id === item.created_by)?.full_name ?? null
-                            return names ? (
-                              <p className="text-xs text-indigo-400 mt-0.5 truncate">담당: {names}</p>
-                            ) : null
-                          })()}
-                        </Link>
                       </div>
                     )
                   })}

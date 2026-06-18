@@ -1,7 +1,6 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import type { TaskType, TaskPriority, ItemType } from '@/lib/types'
@@ -292,7 +291,24 @@ export async function deleteTask(taskId: string) {
   if (error) throw new Error(error.message)
   revalidatePath('/tasks')
   revalidatePath('/dashboard')
-  redirect('/tasks')
+}
+
+export async function moveTaskDate(taskId: string, newDueDate: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('로그인이 필요합니다')
+
+  const admin = getAdminClient()
+  const { error } = await admin
+    .from('tasks')
+    .update({ due_date: newDueDate, status: 'pending' })
+    .eq('id', taskId)
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/calendar')
+  revalidatePath('/dashboard')
+  revalidatePath('/tasks')
 }
 
 export async function addComment(taskId: string, content: string) {

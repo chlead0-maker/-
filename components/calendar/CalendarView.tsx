@@ -136,9 +136,10 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
             const isSelected = selectedDate ? isSameDay(day, selectedDate) : false
             const today = isToday(day)
             const events = dayItems.filter((i) => i.item_type === 'event')
-            const tasks = dayItems.filter((i) => i.item_type !== 'event')
+            const incompleteTasks = dayItems.filter((i) => i.item_type !== 'event' && i.status !== 'completed')
+            const completedTasks = dayItems.filter((i) => i.item_type !== 'event' && i.status === 'completed')
             const MAX_CHIPS = 3
-            const allChips = [...events, ...tasks]
+            const allChips = [...events, ...incompleteTasks, ...completedTasks]
             const visibleChips = allChips.slice(0, MAX_CHIPS)
             const hiddenCount = allChips.length - MAX_CHIPS
 
@@ -168,17 +169,25 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
                               return name ? [name] : []
                             })())
                       : []
+                    const isDone = item.item_type !== 'event' && item.status === 'completed'
                     return (
-                      <div key={item.id} className={`text-[11px] px-1.5 py-0.5 rounded leading-tight flex items-center gap-1 overflow-hidden
-                        ${item.item_type === 'event'
-                          ? 'bg-sky-100 text-sky-700'
-                          : item.status === 'completed'
-                            ? 'bg-green-100 text-green-700'
-                            : item.status === 'overdue'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-indigo-100 text-indigo-700'
-                        }`}>
-                        <span className="truncate flex-1 min-w-0">
+                      <div
+                        key={item.id}
+                        style={isDone ? { opacity: 0.35 } : undefined}
+                        className={[
+                          'text-[11px] px-1.5 py-0.5 rounded leading-tight flex items-center gap-1 overflow-hidden',
+                          item.item_type === 'event'
+                            ? 'bg-sky-100 text-sky-700'
+                            : isDone
+                              ? 'bg-gray-100 text-gray-400'
+                              : item.status === 'overdue'
+                                ? 'bg-red-100 text-red-700'
+                                : item.status === 'in_progress'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-indigo-100 text-indigo-700',
+                        ].join(' ')}
+                      >
+                        <span className={`truncate flex-1 min-w-0 ${isDone ? 'line-through' : ''}`}>
                           {item.item_type === 'event' && item.start_time
                             ? `${item.start_time.slice(0, 5)} ${item.title}`
                             : item.title}
@@ -207,13 +216,16 @@ export default function CalendarView({ canViewAll, isAdmin, currentUserId, emplo
             <span className="w-2.5 h-2.5 rounded-sm bg-indigo-100 inline-block" /> 할일
           </span>
           <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-blue-100 inline-block" /> 진행중
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-sky-100 inline-block" /> 일정
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-green-100 inline-block" /> 완료
+            <span className="w-2.5 h-2.5 rounded-sm bg-red-100 inline-block" /> 지연
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-red-100 inline-block" /> 지연
+            <span className="w-2.5 h-2.5 rounded-sm bg-gray-100 inline-block opacity-50" /> 완료
           </span>
         </div>
       </div>
